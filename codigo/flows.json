@@ -1,0 +1,487 @@
+[
+  {
+    "id": "mqtt-broker-config",
+    "type": "mqtt-broker",
+    "name": "Broker Vending",
+    "broker": "$(MQTT_BROKER)",
+    "port": "$(MQTT_PORT)",
+    "clientid": "$(MQTT_CLIENT_ID)",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "closeTopic": "",
+    "closePayload": "",
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "credentials": {
+      "user": "$(MQTT_USER)",
+      "password": "$(MQTT_PASS)"
+    }
+  },
+  {
+    "id": "tab-usuario",
+    "type": "tab",
+    "label": "Flow 1 – Usuario",
+    "disabled": false
+  },
+  {
+    "id": "tab-productos",
+    "type": "tab",
+    "label": "Flow 2 – Productos",
+    "disabled": false
+  },
+  {
+    "id": "tab-venta",
+    "type": "tab",
+    "label": "Flow 3 – Venta",
+    "disabled": false
+  },
+  {
+    "id": "mqtt-in-usuario",
+    "type": "mqtt in",
+    "z": "tab-usuario",
+    "name": "vending/request/usuario",
+    "topic": "vending/request/usuario",
+    "qos": "1",
+    "datatype": "auto",
+    "broker": "mqtt-broker-config",
+    "wires": [
+      [
+        "json-usuario"
+      ]
+    ]
+  },
+  {
+    "id": "json-usuario",
+    "type": "json",
+    "z": "tab-usuario",
+    "name": "Parse JSON",
+    "action": "obj",
+    "pretty": false,
+    "wires": [
+      [
+        "fn-build-get-usuario"
+      ]
+    ]
+  },
+  {
+    "id": "fn-build-get-usuario",
+    "type": "function",
+    "z": "tab-usuario",
+    "name": "Build GET URL",
+    "func": "var uid = (msg.payload.uid || '').trim().toUpperCase();\nif (!uid) { node.warn('UID vacío, ignorando'); return null; }\nmsg.vendingUid = uid;\nvar base = 'https://fyepjqfacnayjivkppxh.supabase.co';\nvar key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5ZXBqcWZhY25heWppdmtwcHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3ODIxOTYsImV4cCI6MjA4OTM1ODE5Nn0.BKR_X01XOuQM50ehGoR-BkhuGF1Tqe_DUN8NpjY5KQ8';\nmsg.url = base + '/rest/v1/usuarios?rfid_uid=eq.' + uid + '&select=*';\nmsg.headers = {\n    'apikey': key,\n    'Authorization': 'Bearer ' + key,\n    'Content-Type': 'application/json'\n};\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "http-get-usuario"
+      ]
+    ]
+  },
+  {
+    "id": "http-get-usuario",
+    "type": "http request",
+    "z": "tab-usuario",
+    "name": "GET /usuarios",
+    "method": "GET",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "wires": [
+      [
+        "switch-usuario-existe"
+      ]
+    ]
+  },
+  {
+    "id": "switch-usuario-existe",
+    "type": "switch",
+    "z": "tab-usuario",
+    "name": "¿Usuario existe?",
+    "property": "payload",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "nempty"
+      },
+      {
+        "t": "else"
+      }
+    ],
+    "checkall": "false",
+    "repair": false,
+    "outputs": 2,
+    "wires": [
+      [
+        "fn-usuario-existente"
+      ],
+      [
+        "fn-build-post-usuario"
+      ]
+    ]
+  },
+  {
+    "id": "fn-usuario-existente",
+    "type": "function",
+    "z": "tab-usuario",
+    "name": "Format existing user",
+    "func": "var u = msg.payload[0];\nnode.log('[USUARIO] Existente id=' + u.id + ' creditos=' + u.creditos);\nmsg.payload = JSON.stringify({ usuario_id: u.id, creditos: u.creditos, es_nuevo: false, valido: true });\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "mqtt-out-usuario"
+      ]
+    ]
+  },
+  {
+    "id": "fn-build-post-usuario",
+    "type": "function",
+    "z": "tab-usuario",
+    "name": "Build POST new user",
+    "func": "var uid  = msg.vendingUid;\nvar base = 'https://fyepjqfacnayjivkppxh.supabase.co';\nvar key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5ZXBqcWZhY25heWppdmtwcHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3ODIxOTYsImV4cCI6MjA4OTM1ODE5Nn0.BKR_X01XOuQM50ehGoR-BkhuGF1Tqe_DUN8NpjY5KQ8';\nvar cred = parseInt(env.get('CREDITOS_NUEVO')) || 10000;\nmsg.url = base + '/rest/v1/usuarios';\nmsg.headers = {\n    'apikey': key,\n    'Authorization': 'Bearer ' + key,\n    'Content-Type': 'application/json',\n    'Prefer': 'return=representation'\n};\nmsg.payload = { rfid_uid: uid, nombre: 'Usuario_' + uid.slice(-4), creditos: cred };\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "http-post-usuario"
+      ]
+    ]
+  },
+  {
+    "id": "http-post-usuario",
+    "type": "http request",
+    "z": "tab-usuario",
+    "name": "POST /usuarios",
+    "method": "POST",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "wires": [
+      [
+        "fn-usuario-nuevo"
+      ]
+    ]
+  },
+  {
+    "id": "fn-usuario-nuevo",
+    "type": "function",
+    "z": "tab-usuario",
+    "name": "Format new user",
+    "func": "var u    = Array.isArray(msg.payload) ? msg.payload[0] : msg.payload;\nvar cred = parseInt(env.get('CREDITOS_NUEVO')) || 10000;\nnode.log('[USUARIO] Nuevo creado id=' + u.id);\nmsg.payload = JSON.stringify({ usuario_id: u.id, creditos: cred, es_nuevo: true, valido: true });\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "mqtt-out-usuario"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt-out-usuario",
+    "type": "mqtt out",
+    "z": "tab-usuario",
+    "name": "vending/response/usuario",
+    "topic": "vending/response/usuario",
+    "qos": "1",
+    "retain": "false",
+    "broker": "mqtt-broker-config",
+    "wires": []
+  },
+  {
+    "id": "catch-usuario",
+    "type": "catch",
+    "z": "tab-usuario",
+    "name": "Catch errors",
+    "scope": null,
+    "uncaught": false,
+    "wires": [
+      [
+        "fn-usuario-error"
+      ]
+    ]
+  },
+  {
+    "id": "fn-usuario-error",
+    "type": "function",
+    "z": "tab-usuario",
+    "name": "Build error response",
+    "func": "node.error('[USUARIO] Error: ' + msg.error.message);\nmsg.payload = JSON.stringify({ usuario_id: 0, creditos: 0, es_nuevo: false, valido: false });\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "mqtt-out-usuario"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt-in-productos",
+    "type": "mqtt in",
+    "z": "tab-productos",
+    "name": "vending/request/productos",
+    "topic": "vending/request/productos",
+    "qos": "1",
+    "datatype": "auto",
+    "broker": "mqtt-broker-config",
+    "wires": [
+      [
+        "fn-build-get-productos"
+      ]
+    ]
+  },
+  {
+    "id": "fn-build-get-productos",
+    "type": "function",
+    "z": "tab-productos",
+    "name": "Build GET productos URL",
+    "func": "var base = 'https://fyepjqfacnayjivkppxh.supabase.co';\nvar key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5ZXBqcWZhY25heWppdmtwcHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3ODIxOTYsImV4cCI6MjA4OTM1ODE5Nn0.BKR_X01XOuQM50ehGoR-BkhuGF1Tqe_DUN8NpjY5KQ8';\nmsg.url = base + '/rest/v1/productos?stock=gt.0&select=id,nombre,precio,stock&order=id';\nmsg.headers = {\n    'apikey': key,\n    'Authorization': 'Bearer ' + key,\n    'Content-Type': 'application/json'\n};\nmsg.payload = null;\nnode.log('[PRODUCTOS] Solicitud recibida');\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "http-get-productos"
+      ]
+    ]
+  },
+  {
+    "id": "http-get-productos",
+    "type": "http request",
+    "z": "tab-productos",
+    "name": "GET /productos",
+    "method": "GET",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "wires": [
+      [
+        "fn-serialize-productos"
+      ]
+    ]
+  },
+  {
+    "id": "fn-serialize-productos",
+    "type": "function",
+    "z": "tab-productos",
+    "name": "Serialize product list",
+    "func": "var productos = Array.isArray(msg.payload) ? msg.payload : [];\nnode.log('[PRODUCTOS] ' + productos.length + ' disponibles');\nmsg.payload = JSON.stringify(productos);\nmsg.topic   = 'vending/response/productos';\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "mqtt-out-productos"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt-out-productos",
+    "type": "mqtt out",
+    "z": "tab-productos",
+    "name": "vending/response/productos",
+    "topic": "vending/response/productos",
+    "qos": "1",
+    "retain": "false",
+    "broker": "mqtt-broker-config",
+    "wires": []
+  },
+  {
+    "id": "catch-productos",
+    "type": "catch",
+    "z": "tab-productos",
+    "name": "Catch errors",
+    "scope": null,
+    "uncaught": false,
+    "wires": [
+      [
+        "fn-productos-error"
+      ]
+    ]
+  },
+  {
+    "id": "fn-productos-error",
+    "type": "function",
+    "z": "tab-productos",
+    "name": "Empty list on error",
+    "func": "node.error('[PRODUCTOS] Error: ' + msg.error.message);\nmsg.payload = '[]';\nmsg.topic   = 'vending/response/productos';\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "mqtt-out-productos"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt-in-venta",
+    "type": "mqtt in",
+    "z": "tab-venta",
+    "name": "vending/eventos",
+    "topic": "vending/eventos",
+    "qos": "1",
+    "datatype": "auto",
+    "broker": "mqtt-broker-config",
+    "wires": [
+      [
+        "json-venta"
+      ]
+    ]
+  },
+  {
+    "id": "json-venta",
+    "type": "json",
+    "z": "tab-venta",
+    "name": "Parse JSON",
+    "action": "obj",
+    "pretty": false,
+    "wires": [
+      [
+        "fn-build-post-tx"
+      ]
+    ]
+  },
+  {
+    "id": "fn-build-post-tx",
+    "type": "function",
+    "z": "tab-venta",
+    "name": "Build POST transaccion",
+    "func": "msg.vendingEvento = msg.payload;\nvar ev   = msg.vendingEvento;\nvar base = 'https://fyepjqfacnayjivkppxh.supabase.co';\nvar key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5ZXBqcWZhY25heWppdmtwcHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3ODIxOTYsImV4cCI6MjA4OTM1ODE5Nn0.BKR_X01XOuQM50ehGoR-BkhuGF1Tqe_DUN8NpjY5KQ8';\nnode.log('[VENTA] Procesando: uid=' + ev.rfid_uid + ' producto=' + ev.producto_id);\nmsg.url = base + '/rest/v1/transacciones';\nmsg.headers = {\n    'apikey': key,\n    'Authorization': 'Bearer ' + key,\n    'Content-Type': 'application/json',\n    'Prefer': 'return=representation'\n};\nmsg.payload = {\n    usuario_id:      ev.usuario_id,\n    producto_id:     ev.producto_id,\n    creditos_usados: ev.creditos_usados,\n    rfid_uid:        ev.rfid_uid\n};\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "http-post-tx"
+      ]
+    ]
+  },
+  {
+    "id": "http-post-tx",
+    "type": "http request",
+    "z": "tab-venta",
+    "name": "POST /transacciones",
+    "method": "POST",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "wires": [
+      [
+        "fn-build-patch-producto"
+      ]
+    ]
+  },
+  {
+    "id": "fn-build-patch-producto",
+    "type": "function",
+    "z": "tab-venta",
+    "name": "Build PATCH producto",
+    "func": "var ev  = msg.vendingEvento;\nvar tx  = Array.isArray(msg.payload) ? msg.payload[0] : msg.payload;\nnode.log('[VENTA] Transaccion id=' + (tx ? tx.id : 'n/a'));\nvar base = 'https://fyepjqfacnayjivkppxh.supabase.co';\nvar key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5ZXBqcWZhY25heWppdmtwcHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3ODIxOTYsImV4cCI6MjA4OTM1ODE5Nn0.BKR_X01XOuQM50ehGoR-BkhuGF1Tqe_DUN8NpjY5KQ8';\nmsg.url = base + '/rest/v1/productos?id=eq.' + ev.producto_id;\nmsg.headers = {\n    'apikey': key,\n    'Authorization': 'Bearer ' + key,\n    'Content-Type': 'application/json',\n    'Prefer': 'return=minimal'\n};\nmsg.payload = { stock: ev.stock_restante };\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "http-patch-producto"
+      ]
+    ]
+  },
+  {
+    "id": "http-patch-producto",
+    "type": "http request",
+    "z": "tab-venta",
+    "name": "PATCH /productos",
+    "method": "PATCH",
+    "ret": "txt",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "wires": [
+      [
+        "fn-build-patch-usuario"
+      ]
+    ]
+  },
+  {
+    "id": "fn-build-patch-usuario",
+    "type": "function",
+    "z": "tab-venta",
+    "name": "Build PATCH usuario",
+    "func": "var ev   = msg.vendingEvento;\nnode.log('[VENTA] Stock actualizado -> ' + ev.stock_restante);\nvar base = 'https://fyepjqfacnayjivkppxh.supabase.co';\nvar key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5ZXBqcWZhY25heWppdmtwcHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3ODIxOTYsImV4cCI6MjA4OTM1ODE5Nn0.BKR_X01XOuQM50ehGoR-BkhuGF1Tqe_DUN8NpjY5KQ8';\nmsg.url = base + '/rest/v1/usuarios?id=eq.' + ev.usuario_id;\nmsg.headers = {\n    'apikey': key,\n    'Authorization': 'Bearer ' + key,\n    'Content-Type': 'application/json',\n    'Prefer': 'return=minimal'\n};\nmsg.payload = { creditos: ev.saldo_nuevo };\nreturn msg;",
+    "outputs": 1,
+    "wires": [
+      [
+        "http-patch-usuario"
+      ]
+    ]
+  },
+  {
+    "id": "http-patch-usuario",
+    "type": "http request",
+    "z": "tab-venta",
+    "name": "PATCH /usuarios",
+    "method": "PATCH",
+    "ret": "txt",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "wires": [
+      [
+        "debug-venta-ok"
+      ]
+    ]
+  },
+  {
+    "id": "debug-venta-ok",
+    "type": "debug",
+    "z": "tab-venta",
+    "name": "Venta completa",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "vendingEvento",
+    "targetType": "msg",
+    "wires": []
+  },
+  {
+    "id": "catch-venta",
+    "type": "catch",
+    "z": "tab-venta",
+    "name": "Catch errors",
+    "scope": null,
+    "uncaught": false,
+    "wires": [
+      [
+        "debug-venta-error"
+      ]
+    ]
+  },
+  {
+    "id": "debug-venta-error",
+    "type": "debug",
+    "z": "tab-venta",
+    "name": "Error en venta",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "true",
+    "targetType": "full",
+    "wires": []
+  }
+]
